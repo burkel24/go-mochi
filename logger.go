@@ -4,9 +4,16 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/burkel24/go-mochi/internal"
 	"go.uber.org/fx"
 )
+
+type LoggerService interface {
+	Debug(msg string, args ...any)
+	Info(msg string, args ...any)
+	Warn(msg string, args ...any)
+	Error(msg string, args ...any)
+	Logger() *slog.Logger
+}
 
 type LoggerServiceParams struct {
 	fx.In
@@ -15,10 +22,10 @@ type LoggerServiceParams struct {
 type LoggerServiceResult struct {
 	fx.Out
 
-	LoggerService internal.LoggerService
+	LoggerService LoggerService
 }
 
-type LoggerService struct {
+type loggerService struct {
 	logger *slog.Logger
 }
 
@@ -29,26 +36,26 @@ func NewLoggerService(params LoggerServiceParams) (LoggerServiceResult, error) {
 
 	logger := slog.New(handler)
 
-	srv := &LoggerService{logger: logger}
+	srv := &loggerService{logger: logger}
 	return LoggerServiceResult{LoggerService: srv}, nil
 }
 
-func (srv *LoggerService) Debug(msg string, args ...any) {
+func (srv *loggerService) Debug(msg string, args ...any) {
 	srv.logger.Debug(msg, args...)
 }
 
-func (srv *LoggerService) Info(msg string, args ...any) {
+func (srv *loggerService) Info(msg string, args ...any) {
 	srv.logger.Info(msg, args...)
 }
 
-func (srv *LoggerService) Warn(msg string, args ...any) {
+func (srv *loggerService) Warn(msg string, args ...any) {
 	srv.logger.Warn(msg, args...)
 }
 
-func (srv *LoggerService) Error(msg string, args ...any) {
+func (srv *loggerService) Error(msg string, args ...any) {
 	srv.logger.Error(msg, args...)
 }
 
-func (srv *LoggerService) Logger() *slog.Logger {
+func (srv *loggerService) Logger() *slog.Logger {
 	return srv.logger
 }
