@@ -6,7 +6,6 @@ import (
 
 	"context"
 	"fmt"
-	"github.com/burkel24/go-mochi/internal"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
@@ -29,7 +28,7 @@ func NewRouter() *chi.Mux {
 	return router
 }
 
-func NewServer(lc fx.Lifecycle, router *chi.Mux, logger internal.LoggerService) *http.Server {
+func NewServer(lc fx.Lifecycle, router *chi.Mux, logger LoggerService) *http.Server {
 	portStr := os.Getenv("PORT")
 	port := fmt.Sprintf(":%s", portStr)
 
@@ -57,7 +56,7 @@ func NewServer(lc fx.Lifecycle, router *chi.Mux, logger internal.LoggerService) 
 	return srv
 }
 
-func NewFxLogger(logger internal.LoggerService) fxevent.Logger {
+func NewFxLogger(logger LoggerService) fxevent.Logger {
 	fxLogger := fxevent.SlogLogger{Logger: logger.Logger()}
 
 	fxLogger.UseLogLevel(slog.LevelDebug)

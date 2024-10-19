@@ -1,4 +1,4 @@
-package internal
+package interfaces
 
 type Model interface {
 	GetID() uint

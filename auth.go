@@ -3,42 +3,90 @@ package mochi
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"os"
-
-	"github.com/burkel24/go-mochi/internal"
+	"github.com/burkel24/go-mochi/interfaces"
 	"github.com/go-chi/render"
 	"github.com/golang-jwt/jwt/v5"
 	"go.uber.org/fx"
+	"net/http"
+	"os"
+	"strconv"
+	"time"
 )
 
 type authContextkey int
 
 const (
-	AuthHeaderName = "Authorization"
+	AuthHeaderName      = "Authorization"
+	TokenExpirationTime = time.Hour * 24
 )
 
 const (
 	userContextKey authContextkey = iota
 )
 
+type Claims struct {
+	Sub uint      `json:"sub"`
+	Exp time.Time `json:"exp"`
+	Iat time.Time `json:"iat"`
+	Nbf time.Time `json:"nbf"`
+	Aud string    `json:"aud"`
+	Iss string    `json:"iss"`
+}
+
+func NewClaims(user interfaces.User, audience, issuer string) *Claims {
+	now := time.Now()
+
+	return &Claims{
+		Sub: user.ID(),
+		Exp: now.Add(TokenExpirationTime),
+		Iat: now,
+		Nbf: now,
+		Aud: audience,
+		Iss: issuer,
+	}
+}
+
+func (c *Claims) GetExpirationTime() (*jwt.NumericDate, error) {
+	return jwt.NewNumericDate(c.Exp), nil
+}
+
+func (c *Claims) GetIssuedAt() (*jwt.NumericDate, error) {
+	return jwt.NewNumericDate(c.Iat), nil
+}
+
+func (c *Claims) GetNotBefore() (*jwt.NumericDate, error) {
+	return jwt.NewNumericDate(c.Nbf), nil
+}
+
+func (c *Claims) GetIssuer() (string, error) {
+	return c.Iss, nil
+}
+
+func (c *Claims) GetSubject() (string, error) {
+	return strconv.FormatUint(uint64(c.Sub), 10), nil
+}
+
+func (c *Claims) GetAudience() (jwt.ClaimStrings, error) {
+	return []string{c.Aud}, nil
+}
+
 type AuthServiceParams struct {
 	fx.In
 
-	Logger      internal.LoggerService
-	UserService internal.UserService
+	Logger      LoggerService
+	UserService interfaces.UserService
 }
 
 type AuthServiceResult struct {
 	fx.Out
 
-	AuthService internal.AuthService
+	AuthService interfaces.AuthService
 }
 
 type AuthService struct {
-	logger        internal.LoggerService
+	logger        LoggerService
 	signingSecret string
-	userService   internal.UserService
+	userService   interfaces.UserService
 }
 
 func NewAuthService(params AuthServiceParams) (AuthServiceResult, error) {
@@ -102,8 +150,8 @@ func (svc *AuthService) AdminRequired() func(http.Handler) http.Handler {
 	}
 }
 
-func (svc *AuthService) GetUserFromCtx(ctx context.Context) (internal.User, error) {
-	user, ok := ctx.Value(userContextKey).(internal.User)
+func (svc *AuthService) GetUserFromCtx(ctx context.Context) (interfaces.User, error) {
+	user, ok := ctx.Value(userContextKey).(interfaces.User)
 	if !ok {
 		return nil, fmt.Errorf("could not get user from context")
 	}
@@ -125,8 +173,8 @@ func (svc *AuthService) LoginUser(ctx context.Context, username, password string
 	return token, nil
 }
 
-func (svc *AuthService) generateUserToken(user internal.User) (string, error) {
-	claims := internal.NewClaims(user, "TODO", "TODO")
+func (svc *AuthService) generateUserToken(user interfaces.User) (string, error) {
+	claims := NewClaims(user, "TODO", "TODO")
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenString, err := token.SignedString([]byte(svc.signingSecret))
@@ -137,10 +185,10 @@ func (svc *AuthService) generateUserToken(user internal.User) (string, error) {
 	return tokenString, nil
 }
 
-func (svc *AuthService) validateUserToken(tokenString string) (*internal.Claims, error) {
+func (svc *AuthService) validateUserToken(tokenString string) (*Claims, error) {
 	token, err := jwt.ParseWithClaims(
 		tokenString,
-		&internal.Claims{},
+		&Claims{},
 		func(token *jwt.Token) (interface{}, error) {
 			return []byte(svc.signingSecret), nil
 		},
@@ -151,7 +199,7 @@ func (svc *AuthService) validateUserToken(tokenString string) (*internal.Claims,
 		return nil, fmt.Errorf("failed to parse token: %w", err)
 	}
 
-	claims, ok := token.Claims.(*internal.Claims)
+	claims, ok := token.Claims.(*Claims)
 	if !ok || !token.Valid {
 		return nil, fmt.Errorf("invalid token")
 	}

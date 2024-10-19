@@ -7,14 +7,14 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/burkel24/go-mochi/internal"
+	"github.com/burkel24/go-mochi/interfaces"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/render"
 )
 
 type ResourceContextKey int
 
-type ResourceRequestConstructor[M internal.Resource] func(r *http.Request) (M, error)
+type ResourceRequestConstructor[M interfaces.Resource] func(r *http.Request) (M, error)
 
 type Route struct {
 	Method  string
@@ -22,29 +22,29 @@ type Route struct {
 	Handler http.HandlerFunc
 }
 
-type Controller[M internal.Resource] struct {
+type Controller[M interfaces.Resource] struct {
 	additionalDetailRoutes []Route
 	contextKey             ResourceContextKey
 
-	auth   internal.AuthService
-	logger internal.LoggerService
-	svc    internal.Service[M]
+	auth   interfaces.AuthService
+	logger LoggerService
+	svc    interfaces.Service[M]
 	Router *chi.Mux
 
 	createRequestConstructor ResourceRequestConstructor[M]
 	updateRequestConstructor ResourceRequestConstructor[M]
 }
 
-type ControllerOption[M internal.Resource] func(*Controller[M])
+type ControllerOption[M interfaces.Resource] func(*Controller[M])
 
-func NewController[M internal.Resource](
-	svc internal.Service[M],
-	logger internal.LoggerService,
-	authSvc internal.AuthService,
+func NewController[M interfaces.Resource](
+	svc interfaces.Service[M],
+	logger LoggerService,
+	authSvc interfaces.AuthService,
 	createRequestConstructor ResourceRequestConstructor[M],
 	updateRequestConstructor ResourceRequestConstructor[M],
 	opts ...ControllerOption[M],
-) internal.Controller[M] {
+) interfaces.Controller[M] {
 	ctrl := &Controller[M]{
 		additionalDetailRoutes: make([]Route, 0),
 
@@ -266,7 +266,7 @@ func (c *Controller[M]) GetRouter() *chi.Mux {
 	return c.Router
 }
 
-func WithDetailRoute[M internal.Resource](method, path string, handler http.HandlerFunc) ControllerOption[M] {
+func WithDetailRoute[M interfaces.Resource](method, path string, handler http.HandlerFunc) ControllerOption[M] {
 	return func(c *Controller[M]) {
 		c.additionalDetailRoutes = append(c.additionalDetailRoutes, Route{
 			Method:  method,
@@ -276,7 +276,7 @@ func WithDetailRoute[M internal.Resource](method, path string, handler http.Hand
 	}
 }
 
-func WithContextKey[M internal.Resource](key ResourceContextKey) ControllerOption[M] {
+func WithContextKey[M interfaces.Resource](key ResourceContextKey) ControllerOption[M] {
 	return func(c *Controller[M]) {
 		c.contextKey = key
 	}

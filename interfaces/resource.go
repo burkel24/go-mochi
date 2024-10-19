@@ -1,4 +1,4 @@
-package internal
+package interfaces
 
 import (
 	"github.com/go-chi/render"
