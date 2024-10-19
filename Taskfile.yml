@@ -1,0 +1,21 @@
+version: "3"
+
+dotenv: [".env"]
+
+interval: 500ms
+
+tasks:
+  build_example:
+    cmds:
+      - go build -o bin/example examples/server.go
+    generates:
+      - "./bin/example"
+    sources:
+      - "*.go"
+      - "internal/**/*.go"
+
+  fmt:
+    cmds:
+      - go fmt ./...
+    sources:
+      - "**/*.go"
