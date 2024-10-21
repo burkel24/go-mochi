@@ -1,4 +1,4 @@
-package interfaces
+package mochi
 
 import (
 	"github.com/go-chi/render"

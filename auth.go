@@ -3,90 +3,48 @@ package mochi
 import (
 	"context"
 	"fmt"
-	"github.com/burkel24/go-mochi/interfaces"
+	"net/http"
+	"os"
+
 	"github.com/go-chi/render"
 	"github.com/golang-jwt/jwt/v5"
 	"go.uber.org/fx"
-	"net/http"
-	"os"
-	"strconv"
-	"time"
 )
 
 type authContextkey int
 
 const (
-	AuthHeaderName      = "Authorization"
-	TokenExpirationTime = time.Hour * 24
+	AuthHeaderName = "Authorization"
 )
 
 const (
 	userContextKey authContextkey = iota
 )
 
-type Claims struct {
-	Sub uint      `json:"sub"`
-	Exp time.Time `json:"exp"`
-	Iat time.Time `json:"iat"`
-	Nbf time.Time `json:"nbf"`
-	Aud string    `json:"aud"`
-	Iss string    `json:"iss"`
-}
-
-func NewClaims(user interfaces.User, audience, issuer string) *Claims {
-	now := time.Now()
-
-	return &Claims{
-		Sub: user.ID(),
-		Exp: now.Add(TokenExpirationTime),
-		Iat: now,
-		Nbf: now,
-		Aud: audience,
-		Iss: issuer,
-	}
-}
-
-func (c *Claims) GetExpirationTime() (*jwt.NumericDate, error) {
-	return jwt.NewNumericDate(c.Exp), nil
-}
-
-func (c *Claims) GetIssuedAt() (*jwt.NumericDate, error) {
-	return jwt.NewNumericDate(c.Iat), nil
-}
-
-func (c *Claims) GetNotBefore() (*jwt.NumericDate, error) {
-	return jwt.NewNumericDate(c.Nbf), nil
-}
-
-func (c *Claims) GetIssuer() (string, error) {
-	return c.Iss, nil
-}
-
-func (c *Claims) GetSubject() (string, error) {
-	return strconv.FormatUint(uint64(c.Sub), 10), nil
-}
-
-func (c *Claims) GetAudience() (jwt.ClaimStrings, error) {
-	return []string{c.Aud}, nil
+type AuthService interface {
+	AuthRequired() func(http.Handler) http.Handler
+	AdminRequired() func(http.Handler) http.Handler
+	GetUserFromCtx(ctx context.Context) (User, error)
+	LoginUser(ctx context.Context, username, password string) (string, error)
 }
 
 type AuthServiceParams struct {
 	fx.In
 
 	Logger      LoggerService
-	UserService interfaces.UserService
+	UserService UserService
 }
 
 type AuthServiceResult struct {
 	fx.Out
 
-	AuthService interfaces.AuthService
+	AuthService AuthService
 }
 
-type AuthService struct {
+type authService struct {
 	logger        LoggerService
 	signingSecret string
-	userService   interfaces.UserService
+	userService   UserService
 }
 
 func NewAuthService(params AuthServiceParams) (AuthServiceResult, error) {
@@ -94,7 +52,7 @@ func NewAuthService(params AuthServiceParams) (AuthServiceResult, error) {
 
 	signingSecret := os.Getenv("JWT_SIGNING_SECRET")
 
-	result.AuthService = &AuthService{
+	result.AuthService = &authService{
 		logger:        params.Logger,
 		signingSecret: signingSecret,
 		userService:   params.UserService,
@@ -103,7 +61,7 @@ func NewAuthService(params AuthServiceParams) (AuthServiceResult, error) {
 	return result, nil
 }
 
-func (svc *AuthService) AuthRequired() func(http.Handler) http.Handler {
+func (svc *authService) AuthRequired() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			tokenString, err := svc.getTokenStringFromAuthHeader(r)
@@ -129,7 +87,7 @@ func (svc *AuthService) AuthRequired() func(http.Handler) http.Handler {
 	}
 }
 
-func (svc *AuthService) AdminRequired() func(http.Handler) http.Handler {
+func (svc *authService) AdminRequired() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
@@ -150,8 +108,8 @@ func (svc *AuthService) AdminRequired() func(http.Handler) http.Handler {
 	}
 }
 
-func (svc *AuthService) GetUserFromCtx(ctx context.Context) (interfaces.User, error) {
-	user, ok := ctx.Value(userContextKey).(interfaces.User)
+func (svc *authService) GetUserFromCtx(ctx context.Context) (User, error) {
+	user, ok := ctx.Value(userContextKey).(User)
 	if !ok {
 		return nil, fmt.Errorf("could not get user from context")
 	}
@@ -159,7 +117,7 @@ func (svc *AuthService) GetUserFromCtx(ctx context.Context) (interfaces.User, er
 	return user, nil
 }
 
-func (svc *AuthService) LoginUser(ctx context.Context, username, password string) (string, error) {
+func (svc *authService) LoginUser(ctx context.Context, username, password string) (string, error) {
 	user, err := svc.userService.GetUserByCredentials(ctx, username, password)
 	if err != nil {
 		return "", fmt.Errorf("failed to get user by credentials: %w", err)
@@ -173,7 +131,7 @@ func (svc *AuthService) LoginUser(ctx context.Context, username, password string
 	return token, nil
 }
 
-func (svc *AuthService) generateUserToken(user interfaces.User) (string, error) {
+func (svc *authService) generateUserToken(user User) (string, error) {
 	claims := NewClaims(user, "TODO", "TODO")
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -185,7 +143,7 @@ func (svc *AuthService) generateUserToken(user interfaces.User) (string, error) 
 	return tokenString, nil
 }
 
-func (svc *AuthService) validateUserToken(tokenString string) (*Claims, error) {
+func (svc *authService) validateUserToken(tokenString string) (*Claims, error) {
 	token, err := jwt.ParseWithClaims(
 		tokenString,
 		&Claims{},
@@ -207,7 +165,7 @@ func (svc *AuthService) validateUserToken(tokenString string) (*Claims, error) {
 	return claims, nil
 }
 
-func (svc *AuthService) getTokenStringFromAuthHeader(r *http.Request) (string, error) {
+func (svc *authService) getTokenStringFromAuthHeader(r *http.Request) (string, error) {
 	authHeader := r.Header.Get(AuthHeaderName)
 
 	if authHeader == "" {
