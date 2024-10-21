@@ -24,12 +24,12 @@ type repository[M Model] struct {
 	tableName     string
 }
 
-type ResourceRepositoryOption[M Model] func(*repository[M])
+type RepositoryOption[M Model] func(*repository[M])
 
-func NewResourceRepository[M Model](
+func NewRepository[M Model](
 	db DBService,
 	logger LoggerService,
-	opts ...ResourceRepositoryOption[M],
+	opts ...RepositoryOption[M],
 ) Repository[M] {
 	repo := &repository[M]{
 		db:     db,
@@ -142,19 +142,19 @@ func (r *repository[M]) DeleteOne(ctx context.Context, itemID uint) error {
 	return nil
 }
 
-func WithTableName[M Model](tableName string) ResourceRepositoryOption[M] {
+func WithTableName[M Model](tableName string) RepositoryOption[M] {
 	return func(r *repository[M]) {
 		r.tableName = tableName
 	}
 }
 
-func WithJoinTables[M Model](joinTables ...string) ResourceRepositoryOption[M] {
+func WithJoinTables[M Model](joinTables ...string) RepositoryOption[M] {
 	return func(r *repository[M]) {
 		r.joinTables = joinTables
 	}
 }
 
-func WithPreloadTables[M Model](preloadTables ...string) ResourceRepositoryOption[M] {
+func WithPreloadTables[M Model](preloadTables ...string) RepositoryOption[M] {
 	return func(r *repository[M]) {
 		r.preloadTables = preloadTables
 	}
