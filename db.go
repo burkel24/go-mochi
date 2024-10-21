@@ -214,7 +214,7 @@ func (srv *dbService) FindMany(
 }
 
 func (srv *dbService) Migrate(ctx context.Context) error {
-	for _, model := range allModels {
+	for _, model := range srv.models {
 		if err := srv.db.AutoMigrate(model); err != nil {
 			return fmt.Errorf("migrate failed for model %v: %w", model, err)
 		}
@@ -227,7 +227,7 @@ func (srv *dbService) DropAll(ctx context.Context) error {
 	sesh, cancel := srv.GetSession(ctx)
 	defer cancel()
 
-	for _, model := range allModels {
+	for _, model := range srv.models {
 		err := sesh.Migrator().DropTable(model)
 		if err != nil {
 			return fmt.Errorf("drop all failed: %w", err)
