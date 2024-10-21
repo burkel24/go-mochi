@@ -13,7 +13,7 @@ import (
 
 type ResourceContextKey int
 
-type ResourceRequestConstructor[M Resource] func(r *http.Request) (M, error)
+type ResourceRequestConstructor[M Resource] func(*http.Request, User) (M, error)
 
 type Route struct {
 	Method  string
@@ -35,6 +35,12 @@ type Controller[M Resource] interface {
 	GetRouter() *chi.Mux
 }
 
+type UserResourceAccessFunc[M Resource] func(User, M) error
+
+func defaultUserResourceAccessFunc[M Resource](u User, item M) error {
+	return fmt.Errorf("user access func not implemented")
+}
+
 type controller[M Resource] struct {
 	additionalDetailRoutes []Route
 	contextKey             ResourceContextKey
@@ -43,6 +49,8 @@ type controller[M Resource] struct {
 	logger LoggerService
 	svc    Service[M]
 	Router *chi.Mux
+
+	userAccessFunc UserResourceAccessFunc[M]
 
 	createRequestConstructor ResourceRequestConstructor[M]
 	updateRequestConstructor ResourceRequestConstructor[M]
@@ -64,6 +72,8 @@ func NewController[M Resource](
 		auth:   authSvc,
 		logger: logger,
 		svc:    svc,
+
+		userAccessFunc: defaultUserResourceAccessFunc[M],
 
 		createRequestConstructor: createRequestConstructor,
 		updateRequestConstructor: updateRequestConstructor,
@@ -129,7 +139,7 @@ func (c *controller[M]) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	newItem, err := c.createRequestConstructor(r)
+	newItem, err := c.createRequestConstructor(r, user)
 	if err != nil {
 		render.Render(w, r, ErrInvalidRequest(err))
 		return
@@ -162,13 +172,16 @@ func (c *controller[M]) Get(w http.ResponseWriter, r *http.Request) {
 func (c *controller[M]) Update(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
+	// user is already checked in UserAccessMiddleware so we can safely ignore the error
+	user, _ := c.auth.GetUserFromCtx(ctx)
+
 	item, err := c.ItemFromContext(ctx)
 	if err != nil {
 		render.Render(w, r, ErrInvalidRequest(err))
 		return
 	}
 
-	update, err := c.updateRequestConstructor(r)
+	update, err := c.updateRequestConstructor(r, user)
 	if err != nil {
 		render.Render(w, r, ErrInvalidRequest(err))
 		return
@@ -266,7 +279,8 @@ func (c *controller[M]) UserAccessMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		if item.GetUserID() != user.ID() {
+		accessErr := c.userAccessFunc(user, item)
+		if accessErr != nil {
 			render.Render(w, r, ErrNotFound)
 			return
 		}
@@ -292,5 +306,11 @@ func WithDetailRoute[M Resource](method, path string, handler http.HandlerFunc) 
 func WithContextKey[M Resource](key ResourceContextKey) ControllerOption[M] {
 	return func(c *controller[M]) {
 		c.contextKey = key
+	}
+}
+
+func WithUserAccessFunc[M Resource](accessFunc UserResourceAccessFunc[M]) ControllerOption[M] {
+	return func(c *controller[M]) {
+		c.userAccessFunc = accessFunc
 	}
 }
