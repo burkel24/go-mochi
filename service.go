@@ -60,8 +60,6 @@ func (s *service[M]) ListByUser(ctx context.Context, userID uint) ([]M, error) {
 }
 
 func (s *service[M]) CreateOne(ctx context.Context, userID uint, item M) (M, error) {
-	item.SetUserID(userID)
-
 	err := s.repo.CreateOne(ctx, item)
 	if err != nil {
 		return item, fmt.Errorf("failed to create user task: %w", err)
