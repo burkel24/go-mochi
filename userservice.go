@@ -1,4 +1,4 @@
-package interfaces
+package mochi
 
 import (
 	"context"

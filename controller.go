@@ -7,14 +7,13 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/burkel24/go-mochi/interfaces"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/render"
 )
 
 type ResourceContextKey int
 
-type ResourceRequestConstructor[M interfaces.Resource] func(r *http.Request) (M, error)
+type ResourceRequestConstructor[M Resource] func(r *http.Request) (M, error)
 
 type Route struct {
 	Method  string
@@ -22,30 +21,44 @@ type Route struct {
 	Handler http.HandlerFunc
 }
 
-type Controller[M interfaces.Resource] struct {
+type Controller[M Resource] interface {
+	List(w http.ResponseWriter, r *http.Request)
+	Create(w http.ResponseWriter, r *http.Request)
+	Get(w http.ResponseWriter, r *http.Request)
+	Update(w http.ResponseWriter, r *http.Request)
+	Delete(w http.ResponseWriter, r *http.Request)
+
+	ItemFromContext(ctx context.Context) (M, error)
+	ItemContextMiddleware(next http.Handler) http.Handler
+	UserAccessMiddleware(next http.Handler) http.Handler
+
+	GetRouter() *chi.Mux
+}
+
+type controller[M Resource] struct {
 	additionalDetailRoutes []Route
 	contextKey             ResourceContextKey
 
-	auth   interfaces.AuthService
+	auth   AuthService
 	logger LoggerService
-	svc    interfaces.Service[M]
+	svc    Service[M]
 	Router *chi.Mux
 
 	createRequestConstructor ResourceRequestConstructor[M]
 	updateRequestConstructor ResourceRequestConstructor[M]
 }
 
-type ControllerOption[M interfaces.Resource] func(*Controller[M])
+type ControllerOption[M Resource] func(*controller[M])
 
-func NewController[M interfaces.Resource](
-	svc interfaces.Service[M],
+func NewController[M Resource](
+	svc Service[M],
 	logger LoggerService,
-	authSvc interfaces.AuthService,
+	authSvc AuthService,
 	createRequestConstructor ResourceRequestConstructor[M],
 	updateRequestConstructor ResourceRequestConstructor[M],
 	opts ...ControllerOption[M],
-) interfaces.Controller[M] {
-	ctrl := &Controller[M]{
+) Controller[M] {
+	ctrl := &controller[M]{
 		additionalDetailRoutes: make([]Route, 0),
 
 		auth:   authSvc,
@@ -82,7 +95,7 @@ func NewController[M interfaces.Resource](
 	return ctrl
 }
 
-func (c *Controller[M]) List(w http.ResponseWriter, r *http.Request) {
+func (c *controller[M]) List(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	user, err := c.auth.GetUserFromCtx(ctx)
@@ -107,7 +120,7 @@ func (c *Controller[M]) List(w http.ResponseWriter, r *http.Request) {
 	render.RenderList(w, r, respList)
 }
 
-func (c *Controller[M]) Create(w http.ResponseWriter, r *http.Request) {
+func (c *controller[M]) Create(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	user, err := c.auth.GetUserFromCtx(ctx)
@@ -134,7 +147,7 @@ func (c *Controller[M]) Create(w http.ResponseWriter, r *http.Request) {
 	render.Render(w, r, item.ToDTO())
 }
 
-func (c *Controller[M]) Get(w http.ResponseWriter, r *http.Request) {
+func (c *controller[M]) Get(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	item, err := c.ItemFromContext(ctx)
@@ -146,7 +159,7 @@ func (c *Controller[M]) Get(w http.ResponseWriter, r *http.Request) {
 	render.Render(w, r, item.ToDTO())
 }
 
-func (c *Controller[M]) Update(w http.ResponseWriter, r *http.Request) {
+func (c *controller[M]) Update(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	item, err := c.ItemFromContext(ctx)
@@ -172,7 +185,7 @@ func (c *Controller[M]) Update(w http.ResponseWriter, r *http.Request) {
 	render.Render(w, r, updatedItem.ToDTO())
 }
 
-func (c *Controller[M]) Delete(w http.ResponseWriter, r *http.Request) {
+func (c *controller[M]) Delete(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	item, err := c.ItemFromContext(ctx)
@@ -192,7 +205,7 @@ func (c *Controller[M]) Delete(w http.ResponseWriter, r *http.Request) {
 	render.NoContent(w, r)
 }
 
-func (c *Controller[M]) ItemFromContext(ctx context.Context) (M, error) {
+func (c *controller[M]) ItemFromContext(ctx context.Context) (M, error) {
 	var item M
 
 	item, ok := ctx.Value(c.contextKey).(M)
@@ -203,7 +216,7 @@ func (c *Controller[M]) ItemFromContext(ctx context.Context) (M, error) {
 	return item, nil
 }
 
-func (c *Controller[M]) ItemContextMiddleware(next http.Handler) http.Handler {
+func (c *controller[M]) ItemContextMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
@@ -237,7 +250,7 @@ func (c *Controller[M]) ItemContextMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func (c *Controller[M]) UserAccessMiddleware(next http.Handler) http.Handler {
+func (c *controller[M]) UserAccessMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
@@ -262,12 +275,12 @@ func (c *Controller[M]) UserAccessMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func (c *Controller[M]) GetRouter() *chi.Mux {
+func (c *controller[M]) GetRouter() *chi.Mux {
 	return c.Router
 }
 
-func WithDetailRoute[M interfaces.Resource](method, path string, handler http.HandlerFunc) ControllerOption[M] {
-	return func(c *Controller[M]) {
+func WithDetailRoute[M Resource](method, path string, handler http.HandlerFunc) ControllerOption[M] {
+	return func(c *controller[M]) {
 		c.additionalDetailRoutes = append(c.additionalDetailRoutes, Route{
 			Method:  method,
 			Path:    path,
@@ -276,8 +289,8 @@ func WithDetailRoute[M interfaces.Resource](method, path string, handler http.Ha
 	}
 }
 
-func WithContextKey[M interfaces.Resource](key ResourceContextKey) ControllerOption[M] {
-	return func(c *Controller[M]) {
+func WithContextKey[M Resource](key ResourceContextKey) ControllerOption[M] {
+	return func(c *controller[M]) {
 		c.contextKey = key
 	}
 }
