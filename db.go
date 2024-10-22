@@ -40,6 +40,8 @@ type DBService interface {
 	DropAll(ctx context.Context) error
 }
 
+type ModelList []interface{}
+
 const (
 	QueryTimeout = time.Second
 )
@@ -47,7 +49,7 @@ const (
 type DBServiceParams struct {
 	fx.In
 
-	Models []interface{}
+	Models ModelList
 }
 
 type DbServiceResult struct {
