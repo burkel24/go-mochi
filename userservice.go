@@ -5,8 +5,8 @@ import (
 )
 
 type User interface {
-	Admin() bool
-	ID() uint
+	IsAdmin() bool
+	GetID() uint
 }
 
 type UserService interface {
