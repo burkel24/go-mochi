@@ -98,7 +98,7 @@ func (svc *authService) AdminRequired() func(http.Handler) http.Handler {
 				return
 			}
 
-			if !user.Admin() {
+			if !user.IsAdmin() {
 				render.Render(w, r, ErrUnauthorized(fmt.Errorf("user is not an admin")))
 				return
 			}

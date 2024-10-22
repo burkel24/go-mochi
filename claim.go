@@ -24,7 +24,7 @@ func NewClaims(user User, audience, issuer string) *Claims {
 	now := time.Now()
 
 	return &Claims{
-		Sub: user.ID(),
+		Sub: user.GetID(),
 		Exp: now.Add(TokenExpirationTime),
 		Iat: now,
 		Nbf: now,

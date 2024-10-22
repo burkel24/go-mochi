@@ -114,7 +114,7 @@ func (c *controller[M]) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	items, err := c.svc.ListByUser(ctx, user.ID())
+	items, err := c.svc.ListByUser(ctx, user.GetID())
 	if err != nil {
 		c.logger.Error("failed to list items", "error", err)
 		render.Render(w, r, ErrUnknown(err))
@@ -145,7 +145,7 @@ func (c *controller[M]) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	item, err := c.svc.CreateOne(ctx, user.ID(), newItem)
+	item, err := c.svc.CreateOne(ctx, user.GetID(), newItem)
 	if err != nil {
 		c.logger.Error("failed to create item", "error", err)
 		render.Render(w, r, ErrUnknown(err))
